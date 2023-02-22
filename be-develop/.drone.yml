@@ -1,0 +1,80 @@
+kind: pipeline
+type: kubernetes
+name: "Project: sims-be CI/CD pipeline"
+
+metadata:
+  namespace: drone-gitea
+
+image_pull_secrets:
+  - harbor_registry_credential
+
+volumes:
+  - name: criosock
+    host:
+      path: /var/lib/containers
+
+trigger:
+  branch:
+    - develop
+
+node_selector:
+  node-pool: devops
+
+steps:
+  - name: "code scan"
+    image: registry.hpicorp.tk/base/maven:3.8.2-hpiweb-cache
+    environment:
+      sonarToken:
+        from_secret: sonar_token
+    commands:
+      - >
+        mvn clean verify sonar:sonar
+        -Dmaven.test.skip=true
+        -Dsonar.host.url=https://sonarqube.hpicorp.tk
+        -Dsonar.login=$sonarToken
+        -Dsonar.projectKey=sims-be
+        -Dsonar.projectVersion=${DRONE_COMMIT_SHA:0:8}
+
+  - name: "build & push image - stage"
+    image: registry.hpicorp.tk/base/podman:3
+    privileged: true
+    environment:
+      registryACC:
+        from_secret: harbor_acc
+      registryPW:
+        from_secret: harbor_pw
+    volumes:
+      - name: criosock
+        path: /var/lib/containers
+    commands:
+      - export registry=registry.hpicorp.tk
+      - export proj=sims
+      - export app=backend
+      - export tag=${DRONE_COMMIT_SHA:0:8}
+      - export image=$registry/$proj/$app:$tag
+      - podman --events-backend=none -v
+      - podman --events-backend=none login -u $registryACC -p $registryPW registry.hpicorp.tk
+      - podman --events-backend=none --cgroup-manager cgroupfs build -t $image .
+      - podman --events-backend=none push $image
+    when:
+      branch:
+        - develop
+
+  - name: "push a update commit"
+    image: registry.hpicorp.tk/base/update-yaml:1.1.8
+    environment:
+      GIT_ACC:
+        from_secret: git_acc
+      GIT_TOKEN:
+        from_secret: git_token
+      APP: backend
+      IMAGE_TAG: ${DRONE_COMMIT_SHA:0:8}
+      MANIFEST_URL: gitea.hpicorp.tk/HPI
+      MANIFEST_REPO: sims-infra
+      MANIFEST_BRANCH: master
+      TARGET_ENV: stage
+    when:
+      branch:
+        - develop
+      status:
+        - success

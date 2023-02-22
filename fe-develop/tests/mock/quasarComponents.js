@@ -1,0 +1,33 @@
+import {
+  QImg,
+  QBtn,
+  QSelect,
+  QIcon,
+  QInput,
+  QBadge,
+  QItemSection,
+  QItem,
+  QList,
+  QMenu,
+  QCard,
+  QCardSection,
+  QDrawer,
+  QScrollArea,
+} from 'quasar';
+
+export default {
+  QImg,
+  QBtn,
+  QSelect,
+  QIcon,
+  QInput,
+  QBadge,
+  QItemSection,
+  QItem,
+  QList,
+  QMenu,
+  QCard,
+  QCardSection,
+  QDrawer,
+  QScrollArea,
+};

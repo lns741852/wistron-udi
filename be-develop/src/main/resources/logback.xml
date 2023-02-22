@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<configuration scan="true">
+	<property resource="application-${spring.profiles.active}.properties" />
+    <property name="APP" value="sims" />
+    <property name="LOG_HOME" value="${logback.dir}/logs" />
+    <property name="CHARSET" value="UTF-8" />
+<!--<property name="PATTERN" value="%d{yyyyMMdd HH:mm:ss.SSS} [%thread] %highlight(%-5level) %50.50logger{50} %X{ServiceId} %blue([%-3L]) - %msg%n"/>    &lt;!&ndash; 控制台輸出 &ndash;&gt;-->
+    <property name="PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS}  [%-5p]  %-30.30C{0}  %-35.35M  %-4L [%t] - %m%n}"/>
+    <!-- 控制台輸出 -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <!-- encoder默認配置為PartternLayoutEncoder    -->
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>${PATTERN}</pattern>
+            <charset>${CHARSET}</charset>
+        </encoder>
+    </appender>
+    <!-- 按照每天生成日誌文件 -->
+    <appender name="ROLLINGFILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!--日誌文件輸出的文件名-->
+            <FileNamePattern>${LOG_HOME}/%d{yyyy-MM-dd}/${APP}-%d{yyyy-MM-dd}.%i.log</FileNamePattern>
+            <!--日誌文件保留天數-->
+            <MaxHistory>90</MaxHistory>
+      		<maxFileSize>384MB</maxFileSize>
+        </rollingPolicy>
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>${PATTERN}</pattern>
+            <charset>${CHARSET}</charset>
+        </encoder>
+    </appender>
+
+    <springProfile name="dev">
+      <root level="INFO">
+        <appender-ref ref="CONSOLE" />
+      </root>
+    </springProfile>
+    
+    <root level="INFO">
+        <appender-ref ref="ROLLINGFILE" />
+    </root>
+        
+</configuration>

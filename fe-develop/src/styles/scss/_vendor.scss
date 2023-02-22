@@ -1,0 +1,18 @@
+.q-field--outlined .q-field__control:before {
+  border: 1px solid $grey-3;
+}
+
+.q-table {
+  thead th {
+    font-size: 0.875rem
+  }
+  td {
+    color: $grey;
+    font-weight: bold;
+    white-space: normal !important;
+  }
+}
+.q-field--dense .q-field__control, .q-field--dense .q-field__marginal{
+  height: 36px !important; 
+  padding: 2px;
+}

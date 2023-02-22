@@ -1,0 +1,179 @@
+pipeline {
+    agent {
+        label "podman-helm-slave"
+    }
+
+    environment {
+        registry = 'registry.hpicorp.tk'
+        helmrepo = "https://${registry}/chartrepo"
+        proj = 'sims'
+        app = 'java'
+        com = 'backend'
+        image_tag_stage = "${registry}/${proj}/${com}:${env.BUILD_NUMBER}"
+        image_tag_prod = "${registry}/${proj}/${com}:p_${env.BUILD_NUMBER}"
+        tag_stage = "${env.BUILD_NUMBER}"
+        tag_prod = "p_${env.BUILD_NUMBER}"
+        container_name = '${proj}_${app}'
+        chartDir = 'sims-backend'
+        GitSCM = ''
+        GitDate = ''
+        GitCommitter = ''
+        GitCommitMsg = ''
+    }
+
+    stages {
+        stage('Checkout stage code from SCM') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/develop'}
+            }
+            steps {
+                script{
+                    GitSCM = checkout([$class: 'GitSCM', 
+                                       branches: [[name: '*/develop']], 
+                                       extensions: [], 
+                                       userRemoteConfigs: [[credentialsId: 'dc2b5152-4364-43ca-948a-d6ca52301ce9', 
+                                                            url: 'https://bootster-five.visualstudio.com/mdms/_git/sims']]])
+                    GitDate = sh(script: "git log -1 --pretty=%ci ${GitSCM.GIT_COMMIT}", returnStdout: true).trim()
+                    GitCommitter = sh(script: "git log -1 --pretty=%cn ${GitSCM.GIT_COMMIT}", returnStdout: true).trim()
+                    GitCommitMsg = sh(script: "git log -1 --pretty=%B ${GitSCM.GIT_COMMIT}", returnStdout: true).trim()
+                } 
+            }
+            post{
+                success{
+                    echo "SCM checkout successfully!"
+                    slackSend channel: '醫療器械', message: "${JOB_NAME}: a new commit trigger this job...\nDate: ${GitDate}\nBranch: ${GitSCM.GIT_BRANCH}\nAuthor: ${GitCommitter}\nMessage: ${GitCommitMsg}"
+                }
+                failure{
+                    echo "SCM checkout failed!"
+                    slackSend channel: '醫療器械', message: "${JOB_NAME}: a new commit detect, but job failed!"
+                }
+            }
+        }
+
+        stage('Checkout prod code from SCM') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/prod'}
+            }
+            steps {
+                script{
+                    GitSCM = checkout([$class: 'GitSCM', 
+                                       branches: [[name: '*/prod']], 
+                                       extensions: [], 
+                                       userRemoteConfigs: [[credentialsId: 'dc2b5152-4364-43ca-948a-d6ca52301ce9', 
+                                                            url: 'https://bootster-five.visualstudio.com/mdms/_git/sims']]])
+                    GitDate = sh(script: "git log -1 --pretty=%ci ${GitSCM.GIT_COMMIT}", returnStdout: true).trim()
+                    GitCommitter = sh(script: "git log -1 --pretty=%cn ${GitSCM.GIT_COMMIT}", returnStdout: true).trim()
+                    GitCommitMsg = sh(script: "git log -1 --pretty=%B ${GitSCM.GIT_COMMIT}", returnStdout: true).trim()
+                } 
+            }
+            post{
+                success{
+                    echo "SCM checkout successfully!"
+                    slackSend channel: '醫療器械', message: "${JOB_NAME}: a new commit trigger this job...\nDate: ${GitDate}\nBranch: ${GitSCM.GIT_BRANCH}\nAuthor: ${GitCommitter}\nMessage: ${GitCommitMsg}"
+                }
+                failure{
+                    echo "SCM checkout failed!"
+                    slackSend channel: '醫療器械', message: "${JOB_NAME}: a new commit detect, but job failed!"
+                }
+            }
+        }
+        
+        stage('Build stage docker image') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/develop'}
+            }
+            steps {
+                container('podman'){
+                    withCredentials([usernamePassword(credentialsId: 'HarborKey', passwordVariable: 'registryPW', usernameVariable: 'registryAcc')]) {
+                        sh 'podman --events-backend=none -v; id'
+                        sh 'podman --events-backend=none login -u ${registryAcc} -p ${registryPW} registry.hpicorp.tk'
+                        sh 'podman --events-backend=none --cgroup-manager cgroupfs build -t ${image_tag_stage} .'
+                        sh 'podman --events-backend=none login -u ${registryAcc} -p ${registryPW} registry.hpicorp.tk'
+                        sh 'podman --events-backend=none push ${image_tag_stage}'
+                    }
+                }
+            }
+            post{
+                failure{
+                    echo "Build docker image failed!"
+                    slackSend channel: '醫療器械', message: "${JOB_NAME}: Build ${com} container image failed!"
+                }
+            }
+        }
+        
+        stage('Build prod docker image') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/prod'}
+            }
+            steps {
+                container('podman'){
+                    withCredentials([usernamePassword(credentialsId: 'HarborKey', passwordVariable: 'registryPW', usernameVariable: 'registryAcc')]) {
+                        sh 'podman --events-backend=none -v; id'
+                        sh 'podman --events-backend=none login -u ${registryAcc} -p ${registryPW} regitry.hpicorp.tk'
+                        sh 'podman --events-backend=none --cgroup-manager cgroupfs build -t ${image_tag_prod} .'
+                        sh 'podman --events-backend=none login -u ${registryAcc} -p ${registryPW} registry.hpicorp.tk'
+                        sh 'podman --events-backend=none push ${image_tag_prod}'
+                    }
+                }
+            }
+            post{
+                failure{
+                    echo "Build docker image failed!"
+                    slackSend channel: '醫療器械', message: "${JOB_NAME}: Build ${com} container image failed!"
+                }
+            }
+        }
+
+        stage('Deploy to stage on Kubernetes') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/develop'}
+            }
+            steps {
+                container('helm') {
+                    withCredentials([usernamePassword(credentialsId: 'HarborKey', passwordVariable: 'registryPW', usernameVariable: 'registryAcc')]){
+                        sh 'helm repo add --username ${registryAcc} --password ${registryPW} ${proj} ${helmrepo}/${proj}'
+                        sh 'helm repo update'
+                        sh 'helm fetch ${proj}/${proj}-${com}'
+                        sh 'tar zxvf sims-backend-0.1.0.tgz'
+                        sh 'helm upgrade --install ${proj}-${com} ${chartDir} --set image.repository=${registry}/${proj}/${com} --set image.tag=${tag_stage} --set env.runtimeenv=stage -n sims-stage'
+                    }
+                }
+            }
+            post{
+                failure{
+                    echo "Deploy ${com} docker image to target machine failed!"
+                    slackSend channel: '醫療器械', message: "${JOB_NAME}: Deploy ${com} to stage failed!"
+                }
+            }
+        }
+        
+        stage('Deploy to prod on Kubernetes') {
+            when {
+                expression { env.GIT_BRANCH == 'origin/prod'}
+            }
+            steps {
+                container('helm') {
+                    withCredentials([usernamePassword(credentialsId: 'HarborKey', passwordVariable: 'registryPW', usernameVariable: 'registryAcc')]){
+                        sh 'helm repo add --username ${registryAcc} --password ${registryPW} ${proj} ${helmrepo}/${proj}'
+                        sh 'helm repo update'
+                        sh 'helm fetch ${proj}/${proj}-${com}'
+                        sh 'tar zxvf sims-backend-0.1.0.tgz'
+                        sh 'helm upgrade --install ${proj}-${com} ${chartDir} --set image.repository=${registry}/${proj}/${com} --set image.tag=${tag_prod} --set env.runtimeenv=prod -n sims-prod'
+                    }
+                }
+            }
+            post{
+                failure{
+                    echo "Deploy ${com} docker image to target machine failed!"
+                    slackSend channel: '醫療器械', message: "${JOB_NAME}: Deploy ${com} to prod failed!"
+                }
+            }
+        }
+    }
+    post{
+        success{
+            echo "========pipeline executed successfully ========"
+            slackSend channel: '醫療器械', message: "${JOB_NAME}: sims ${com} is ready to service!"
+        }
+    }  
+}
